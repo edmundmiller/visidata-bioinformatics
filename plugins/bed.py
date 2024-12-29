@@ -1,10 +1,9 @@
 """VisiData loader for BED (Browser Extensible Data) files."""
 
-
-
 from copy import copy
 
-from visidata import Sheet, TsvSheet, options, vd, VisiData
+from visidata import Sheet, TsvSheet, Column, options, vd, VisiData
+
 
 @VisiData.api
 def guess_bed(vd, p):
@@ -32,22 +31,16 @@ def open_bed(vd, p):
     return BedSheet(p.name, source=p)
 
 
-class BedSheet(Sheet):
+class BedSheet(TsvSheet):
     """Sheet for displaying BED format data"""
 
     rowtype = "regions"  # rowdef: list of fields
 
-    def iterload(self):
-        with self.source.open_text() as fp:
-            for line in Progress(fp, "loading"):
-                line = line.strip()
-                if not line or line.startswith(("#", "track", "browser")):
-                    continue
-                yield line.split("\t")
+    def __init__(self, name, source=None, **kwargs):
+        super().__init__(name, source=source, delimiter="\t", **kwargs)
 
     def reload(self):
         self.columns = []
-
         # Required BED fields
         self.addColumn(Column("chrom", 0))
         self.addColumn(Column("start", 1, type=int))
@@ -70,6 +63,15 @@ class BedSheet(Sheet):
             self.addColumn(Column(name, i, type=typ))
 
         super().reload()
+
+    def iterload(self):
+        for line in super().iterload():
+            if not line or (
+                isinstance(line[0], str)
+                and line[0].startswith(("#", "track", "browser"))
+            ):
+                continue
+            yield line
 
 
 @VisiData.api

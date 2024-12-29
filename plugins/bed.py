@@ -1,13 +1,10 @@
-# /// script
-# requires-python = ">=3.8"
-# dependencies = [
-#   "pybedlite",
-# ]
-# ///
-
 """VisiData loader for BED (Browser Extensible Data) files."""
 
-from visidata import *
+
+
+from copy import copy
+
+from visidata import Sheet, TsvSheet, options, vd, VisiData
 
 @VisiData.api
 def guess_bed(vd, p):
@@ -29,44 +26,57 @@ def guess_bed(vd, p):
             break
     return None
 
+
 @VisiData.api
 def open_bed(vd, p):
     return BedSheet(p.name, source=p)
 
+
 class BedSheet(Sheet):
     """Sheet for displaying BED format data"""
+
     rowtype = "regions"  # rowdef: list of fields
-    
+
     def iterload(self):
         with self.source.open_text() as fp:
-            for line in Progress(fp, 'loading'):
+            for line in Progress(fp, "loading"):
                 line = line.strip()
-                if not line or line.startswith(('#', 'track', 'browser')):
+                if not line or line.startswith(("#", "track", "browser")):
                     continue
-                yield line.split('\t')
+                yield line.split("\t")
 
     def reload(self):
         self.columns = []
-        
+
         # Required BED fields
-        self.addColumn(Column('chrom', 0))
-        self.addColumn(Column('start', 1, type=int))
-        self.addColumn(Column('end', 2, type=int))
-        
+        self.addColumn(Column("chrom", 0))
+        self.addColumn(Column("start", 1, type=int))
+        self.addColumn(Column("end", 2, type=int))
+
         # Optional BED fields
         optional_cols = [
-            ('name', 3, str),
-            ('score', 4, int), 
-            ('strand', 5, str),
-            ('thickStart', 6, int),
-            ('thickEnd', 7, int),
-            ('itemRgb', 8, str),
-            ('blockCount', 9, int),
-            ('blockSizes', 10, str),
-            ('blockStarts', 11, str)
+            ("name", 3, str),
+            ("score", 4, int),
+            ("strand", 5, str),
+            ("thickStart", 6, int),
+            ("thickEnd", 7, int),
+            ("itemRgb", 8, str),
+            ("blockCount", 9, int),
+            ("blockSizes", 10, str),
+            ("blockStarts", 11, str),
         ]
-        
+
         for name, i, typ in optional_cols:
             self.addColumn(Column(name, i, type=typ))
 
         super().reload()
+
+
+@VisiData.api
+def open_usv(vd, p):
+    return TsvSheet(p.base_stem, source=p, delimiter="\u241f", row_delimiter="\u241e")
+
+
+@VisiData.api
+def save_usv(vd, p, vs):
+    vd.save_tsv(p, vs, row_delimiter="\u241e", delimiter="\u241f")

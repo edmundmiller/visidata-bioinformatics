@@ -37,7 +37,7 @@ class BedSheet(TsvSheet):
     rowtype = "regions"  # rowdef: list of fields
 
     def __init__(self, name, source=None, **kwargs):
-        super().__init__(name, source=source, delimiter="\t", **kwargs)
+        super().__init__(name, source=source, delimiter="\t", headerlines=0, **kwargs)
 
     def reload(self):
         super().reload()
@@ -75,13 +75,13 @@ class BedSheet(TsvSheet):
             self.addColumn(Column(name=name, getter=make_getter(idx, type_func)))
 
     def iterload(self):
-        for line in super().iterload():
-            if not line or (
-                isinstance(line[0], str)
-                and line[0].startswith(("#", "track", "browser"))
-            ):
-                continue
-            yield line
+        with self.source.open_text() as fp:
+            for line in fp:
+                line = line.rstrip('\n')
+                if not line or line.startswith(("#", "track", "browser")):
+                    continue
+                fields = line.split(self.delimiter)
+                yield fields
 
 
 @VisiData.api

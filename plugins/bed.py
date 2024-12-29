@@ -40,13 +40,25 @@ class BedSheet(TsvSheet):
         super().__init__(name, source=source, delimiter="\t", **kwargs)
 
     def reload(self):
+        super().reload()
+        
+        # Clear existing columns and add our BED-specific ones
         self.columns = []
+        
+        def make_getter(idx, type_func=str):
+            def getter(col, row):
+                try:
+                    return type_func(row[idx])
+                except (IndexError, ValueError):
+                    return None
+            return getter
+        
         # Required BED fields
-        self.addColumn(Column("chrom", 0))
-        self.addColumn(Column("start", 1, type=int))
-        self.addColumn(Column("end", 2, type=int))
-
-        # Optional BED fields
+        self.addColumn(Column(name="chrom", getter=make_getter(0)))
+        self.addColumn(Column(name="start", getter=make_getter(1, int)))
+        self.addColumn(Column(name="end", getter=make_getter(2, int)))
+        
+        # Optional BED fields with their types
         optional_cols = [
             ("name", 3, str),
             ("score", 4, int),
@@ -58,11 +70,9 @@ class BedSheet(TsvSheet):
             ("blockSizes", 10, str),
             ("blockStarts", 11, str),
         ]
-
-        for name, i, typ in optional_cols:
-            self.addColumn(Column(name, i, type=typ))
-
-        super().reload()
+        
+        for name, idx, type_func in optional_cols:
+            self.addColumn(Column(name=name, getter=make_getter(idx, type_func)))
 
     def iterload(self):
         for line in super().iterload():

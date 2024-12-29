@@ -1,0 +1,4 @@
+# Test basic BED file loading and column handling
+open test-data/bed/ucsc_example1.bed
+columns
+save_tsv tests/golden/bed_basic.tsv

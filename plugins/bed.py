@@ -18,6 +18,30 @@ Uses pybedlite to properly parse BED format files with the following fields:
 from visidata import *
 import pybedlite as pybed
 from pathlib import Path
+import re
+
+@VisiData.api
+def guess_bed(vd, p):
+    """Guess if file is a BED format based on content"""
+    with p.open_text() as fp:
+        # Skip any header lines
+        for line in fp:
+            if line.startswith(('#', 'track', 'browser')):
+                continue
+            if not line.strip():
+                continue
+            # Check if line matches BED format (tab-separated, at least 3 fields,
+            # 2nd and 3rd fields are integers)
+            fields = line.strip().split('\t')
+            if len(fields) >= 3:
+                try:
+                    int(fields[1])
+                    int(fields[2])
+                    return dict(filetype='bed', _likelihood=9)
+                except ValueError:
+                    pass
+            break
+    return None
 
 @VisiData.api
 def open_bed(vd, p):

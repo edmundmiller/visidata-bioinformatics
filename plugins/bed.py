@@ -1,6 +1,6 @@
 """VisiData loader for BED (Browser Extensible Data) files.
 
-Handles the standard BED format with the following fields:
+Uses pybedlite to properly parse BED format files with the following fields:
 - chrom      - chromosome name
 - chromStart - starting position (0-based)
 - chromEnd   - ending position (exclusive)
@@ -16,73 +16,44 @@ Handles the standard BED format with the following fields:
 """
 
 from visidata import *
+import pybedlite as pybed
+from pathlib import Path
 
 @VisiData.api
 def open_bed(vd, p):
     return BedSheet(p.name, source=p)
 
-class BedSheet(TsvSheet):
-    rowtype = 'regions'  # rowdef: list of fields
-    delimiter = '\t'
+class BedSheet(Sheet):
+    rowtype = 'regions'  # rowdef: BedRecord
     
     def iterload(self):
-        # Skip comment/header lines
-        self.options.regex_skip = r'^(#|track|browser)'
-        
-        for row in super().iterload():
-            # Ensure minimum required fields
-            if len(row) < 3:
-                continue
-                
-            # Convert positions to integers
-            try:
-                row[1] = int(row[1])  # chromStart
-                row[2] = int(row[2])  # chromEnd
-                
-                if len(row) > 4:
-                    row[4] = int(row[4])  # score
-                if len(row) > 6:
-                    row[6] = int(row[6])  # thickStart
-                    row[7] = int(row[7])  # thickEnd
-                if len(row) > 9:
-                    row[9] = int(row[9])  # blockCount
-            except ValueError as e:
-                continue
-                
-            yield row
+        with pybed.reader(path=Path(str(self.source))) as bed_reader:
+            for record in Progress(bed_reader, 'loading'):
+                yield record
 
     def reload(self):
         self.columns = []
         
         # Required fields
-        self.addColumn(ColumnItem('chrom', 0))
-        self.addColumn(ColumnItem('chromStart', 1, type=int))
-        self.addColumn(ColumnItem('chromEnd', 2, type=int))
+        self.addColumn(ColumnAttr('chrom', 'chrom'))
+        self.addColumn(ColumnAttr('chromStart', 'start', type=int))
+        self.addColumn(ColumnAttr('chromEnd', 'end', type=int))
         
-        # Optional fields
+        # Optional fields that are attributes of BedRecord
         optional_cols = [
-            ('name', 3, str),
-            ('score', 4, int),
-            ('strand', 5, str),
-            ('thickStart', 6, int),
-            ('thickEnd', 7, int),
-            ('itemRgb', 8, str),
-            ('blockCount', 9, int),
-            ('blockSizes', 10, str),
-            ('blockStarts', 11, str)
+            ('name', 'name', str),
+            ('score', 'score', int),
+            ('strand', 'strand', str),
+            ('thickStart', 'thick_start', int),
+            ('thickEnd', 'thick_end', int),
+            ('itemRgb', 'item_rgb', str),
+            ('blockCount', 'block_count', int),
+            ('blockSizes', 'block_sizes', str),
+            ('blockStarts', 'block_starts', str)
         ]
         
-        # Add columns based on first data row
-        for line in self.source.open_text():
-            if self.options.regex_skip and re.match(self.options.regex_skip, line):
-                continue
-            if not line.strip():
-                continue
-                
-            ncols = len(line.split(self.delimiter))
-            for name, i, typ in optional_cols:
-                if i < ncols:
-                    self.addColumn(ColumnItem(name, i, type=typ))
-            break
+        # Add all possible columns - they'll be None if not present
+        for name, attr, typ in optional_cols:
+            self.addColumn(ColumnAttr(name, attr, type=typ))
 
         super().reload()

@@ -1,0 +1,11 @@
+{
+    "name": "bioinformatics",
+    "description: "Loaders for Bioinformatics file formats",
+    "maintainer": "Edmund Miller <git@edmundmiller.dev>",
+    "url": "link to the raw .py file",
+    "latest_ver": "0.1",
+    "visidata_ver": "version of VisiData required",
+    "pydeps": "[Space seperated]",
+    "vdplugindeps": "space-seperated list of VisiData plugin dependencies",
+    "sha256": "SHA256 hash of plugin .py at raw url. Can be obtained by running vdhash.py"
+}

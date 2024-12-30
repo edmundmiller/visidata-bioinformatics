@@ -96,5 +96,5 @@ def save_gff(p, *sheets):
             except Exception as e:
                 vd.warning(f'error saving row: {e}')
                 
-# Add GFF format detection
-VisiData.guess_handlers.append(guess_gff)
+# Register GFF format detection
+vd.filetype('gff', GffSheet)

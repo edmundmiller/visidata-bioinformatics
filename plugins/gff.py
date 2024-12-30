@@ -9,14 +9,50 @@ from visidata import (
     vd,
     VisiData,
     asyncthread,
+    AttrDict,
+    ItemColumn,
 )
 
 __version__ = "0.1"
 
 
+class AttributesSheet(Sheet):
+    """Sheet for displaying parsed GFF attributes"""
+    rowtype = "attributes"  # rowdef: AttrDict of key-value pairs
+    
+    def iterload(self):
+        attrs_str = self.source
+        if not attrs_str or attrs_str == '.':
+            return
+            
+        attrs = AttrDict()
+        for attr in attrs_str.split(';'):
+            if not attr.strip():
+                continue
+            try:
+                key, value = attr.split('=', 1)
+                attrs[key.strip()] = value.strip()
+            except ValueError:
+                # Handle malformed attributes
+                attrs[attr.strip()] = ''
+        
+        yield attrs
+
+    def addRow(self, row, index=None):
+        super().addRow(row, index=index)
+        
+        # Add columns for any new keys
+        for k in row:
+            if not any(c.name == k for c in self.columns):
+                self.addColumn(ItemColumn(k))
+
+
 class GffSheet(Sheet):
     """Sheet for displaying GFF (General Feature Format) data"""
     rowtype = "features"  # rowdef: list of [seqid, source, type, start, end, score, strand, phase, attrs]
+    
+    def openRow(self, row):
+        return AttributesSheet(name=f"attributes_{row[0]}_{row[3]}_{row[4]}", source=row[8])
     
     columns = [
         Column(name="seqid", getter=lambda c,r: r[0], type=str),

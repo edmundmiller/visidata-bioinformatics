@@ -63,21 +63,21 @@ class BedSheet(TsvSheet):
             return getter
 
         # Required BED fields
-        self.addColumn(Column(name="chrom", getter=make_getter(0)))
-        self.addColumn(Column(name="start", getter=make_getter(1, int)))
-        self.addColumn(Column(name="end", getter=make_getter(2, int)))
+        self.addColumn(Column(name="chrom", type=str, getter=make_getter(0)))
+        self.addColumn(Column(name="start", type=int, getter=make_getter(1, int)))
+        self.addColumn(Column(name="end", type=int, getter=make_getter(2, int)))
 
         # Optional BED fields with their types
         optional_cols = [
-            ("name", 3, str),
-            ("score", 4, int),
-            ("strand", 5, str),
-            ("thickStart", 6, int),
-            ("thickEnd", 7, int),
-            ("itemRgb", 8, str),
-            ("blockCount", 9, int),
-            ("blockSizes", 10, str),
-            ("blockStarts", 11, str),
+            ("name", 3, str),  # Name of region
+            ("score", 4, float),  # Score from 0-1000
+            ("strand", 5, str),  # + or - for strand
+            ("thickStart", 6, int),  # Starting position at which feature is drawn thickly
+            ("thickEnd", 7, int),  # Ending position at which feature is drawn thickly
+            ("itemRgb", 8, str),  # RGB color value (e.g., 255,0,0)
+            ("blockCount", 9, int),  # Number of blocks (exons)
+            ("blockSizes", 10, str),  # Comma-separated list of block sizes
+            ("blockStarts", 11, str),  # Comma-separated list of block starts
         ]
 
         for name, idx, type_func in optional_cols:

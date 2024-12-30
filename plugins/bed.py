@@ -11,6 +11,8 @@ from visidata import (
     VisiData,
     asyncthread,
     Progress,
+    AttrDict,
+    ItemColumn,
 )
 
 
@@ -49,52 +51,104 @@ def open_bed(vd, p):
         return TsvSheet(p.name, source=p)
 
 
+class TrackAttributesSheet(Sheet):
+    """Sheet for displaying parsed track line attributes"""
+    rowtype = "attributes"  # rowdef: AttrDict of key-value pairs
+    
+    def iterload(self):
+        track_str = self.source
+        if not track_str or not track_str.startswith('track'):
+            return
+            
+        attrs = AttrDict()
+        # Remove 'track' from the start
+        parts = track_str[5:].strip().split()
+        
+        for part in parts:
+            if '=' in part:
+                key, value = part.split('=', 1)
+                # Remove quotes if present
+                value = value.strip('"\'')
+                attrs[key.strip()] = value.strip()
+            else:
+                attrs[part.strip()] = ''
+                
+        yield attrs
+
+    def addRow(self, row, index=None):
+        super().addRow(row, index=index)
+        
+        # Add columns for any new keys
+        for k in row:
+            if not any(c.name == k for c in self.columns):
+                self.addColumn(ItemColumn(k))
+
+
 class BedSheet(TsvSheet):
     """Sheet for displaying BED format data"""
 
     rowtype = "regions"  # rowdef: list of fields
-
+    
     def __init__(self, name, source=None, **kwargs):
         super().__init__(name, source=source, delimiter="\t", headerlines=0, **kwargs)
+        self.track_lines = []  # Store track lines for later reference
 
     @asyncthread
     def reload(self):
         self.columns = []
         self.rows = []
 
-        def make_getter(idx, type_func=str):
+        def make_getter(idx, type_func=str, validator=None):
             def getter(col, row):
                 try:
-                    return type_func(row[idx]) if row and len(row) > idx else None
+                    val = type_func(row[idx]) if row and len(row) > idx else None
+                    if validator and val is not None:
+                        val = validator(val)
+                    return val
                 except (IndexError, ValueError, TypeError):
                     return None
-
             return getter
 
-        # Required BED fields
+        def validate_score(score):
+            """Validate and clamp score between 0-1000"""
+            try:
+                score = float(score)
+                return min(max(score, 0), 1000)
+            except (ValueError, TypeError):
+                return 0
+
+        def validate_strand(strand):
+            """Validate strand is +, -, or ."""
+            return strand if strand in ('+', '-', '.') else '.'
+
+        def validate_rgb(rgb):
+            """Validate RGB string format"""
+            try:
+                r,g,b = map(int, rgb.split(','))
+                return f"{min(max(r,0),255)},{min(max(g,0),255)},{min(max(b,0),255)}"
+            except:
+                return "0,0,0"
+
+        # Required BED fields with validation
         self.addColumn(Column(name="chrom", type=str, getter_type=make_getter(0)))
         self.addColumn(Column(name="start", type=int, getter_type=make_getter(1, int)))
         self.addColumn(Column(name="end", type=int, getter_type=make_getter(2, int)))
 
-        # Optional BED fields with their types
+        # Optional BED fields with their types and validators
         optional_cols = [
-            ("name", 3, str),  # Name of region
-            ("score", 4, float),  # Score from 0-1000
-            ("strand", 5, str),  # + or - for strand
-            (
-                "thickStart",
-                6,
-                int,
-            ),  # Starting position at which feature is drawn thickly
-            ("thickEnd", 7, int),  # Ending position at which feature is drawn thickly
-            ("itemRgb", 8, str),  # RGB color value (e.g., 255,0,0)
-            ("blockCount", 9, int),  # Number of blocks (exons)
-            ("blockSizes", 10, str),  # Comma-separated list of block sizes
-            ("blockStarts", 11, str),  # Comma-separated list of block starts
+            ("name", 3, str, None),  # Name of region
+            ("score", 4, float, validate_score),  # Score from 0-1000
+            ("strand", 5, str, validate_strand),  # + or - for strand
+            ("thickStart", 6, int, None),  # Starting position at which feature is drawn thickly
+            ("thickEnd", 7, int, None),  # Ending position at which feature is drawn thickly
+            ("itemRgb", 8, str, validate_rgb),  # RGB color value (e.g., 255,0,0)
+            ("blockCount", 9, int, None),  # Number of blocks (exons)
+            ("blockSizes", 10, str, None),  # Comma-separated list of block sizes
+            ("blockStarts", 11, str, None),  # Comma-separated list of block starts
         ]
 
-        for name, idx, type_func in optional_cols:
-            self.addColumn(Column(name=name, getter=make_getter(idx, type_func)))
+        for name, idx, type_func, validator in optional_cols:
+            self.addColumn(Column(name=name, getter=make_getter(idx, type_func, validator)))
 
         # Load the data
         with self.source.open_text() as fp:
@@ -103,10 +157,13 @@ class BedSheet(TsvSheet):
                 line = line.rstrip("\n")
                 if not line:
                     continue
-                if line.startswith(("browser", "#")):
+                if line.startswith("#"):
+                    continue
+                if line.startswith("browser"):
+                    # Store browser lines but don't add as rows
                     continue
                 if line.startswith("track"):
-                    # TODO Parse track line but don't add as row
+                    self.track_lines.append(line)
                     continue
                 try:
                     fields = line.split("\t")  # Explicitly split on tabs
@@ -115,38 +172,52 @@ class BedSheet(TsvSheet):
                         vd.warning(f"skipping line with too few fields: {line[:50]}...")
                         continue
 
-                    # Convert coordinates - BED uses 0-based start and 1-based end
-                    try:
-                        fields[1] = int(fields[1])  # chromStart (0-based)
-                        fields[2] = int(fields[2])  # chromEnd (1-based, non-inclusive)
-                    except ValueError as e:
-                        vd.warning(
-                            f"invalid coordinates in line: {line[:50]}... {str(e)}"
-                        )
+                    # Validate required fields
+                    if not fields[0].strip():
+                        vd.warning(f"skipping line with empty chromosome: {line[:50]}...")
                         continue
 
-                    # Handle optional fields if present
-                    if len(fields) >= 5:  # score field exists
-                        try:
-                            score = float(fields[4])
-                            # Score should be between 0 and 1000
-                            fields[4] = min(max(score, 0), 1000)
-                        except (ValueError, TypeError):
-                            fields[4] = 0
+                    # Convert coordinates - BED uses 0-based start and 1-based end
+                    try:
+                        start = int(fields[1])
+                        end = int(fields[2])
+                        if start < 0:
+                            vd.warning(f"invalid negative start coordinate: {line[:50]}...")
+                            continue
+                        if end <= start:
+                            vd.warning(f"end coordinate must be greater than start: {line[:50]}...")
+                            continue
+                        fields[1] = start
+                        fields[2] = end
+                    except ValueError as e:
+                        vd.warning(f"invalid coordinates in line: {line[:50]}... {str(e)}")
+                        continue
 
-                    if len(fields) >= 10:  # blockCount exists
-                        try:
-                            fields[9] = int(fields[9])  # blockCount
-                        except (ValueError, TypeError):
-                            fields[9] = 0
-
+                    # Handle optional fields
                     if len(fields) >= 7:  # thickStart/End exist
                         try:
-                            fields[6] = int(fields[6])  # thickStart
-                            fields[7] = int(fields[7])  # thickEnd
+                            thick_start = int(fields[6])
+                            thick_end = int(fields[7])
+                            # Validate thick coordinates are within feature bounds
+                            fields[6] = max(thick_start, start)
+                            fields[7] = min(thick_end, end)
                         except (ValueError, TypeError):
-                            fields[6] = fields[1]  # default to chromStart
-                            fields[7] = fields[2]  # default to chromEnd
+                            fields[6] = start  # default to chromStart
+                            fields[7] = end    # default to chromEnd
+
+                    if len(fields) >= 10:  # blockCount/Sizes/Starts exist
+                        try:
+                            block_count = int(fields[9])
+                            if block_count > 0:
+                                # Validate block sizes and starts if present
+                                if len(fields) >= 12:
+                                    sizes = fields[10].rstrip(',').split(',')
+                                    starts = fields[11].rstrip(',').split(',')
+                                    if len(sizes) != block_count or len(starts) != block_count:
+                                        vd.warning(f"mismatched block counts in line: {line[:50]}...")
+                                        fields[9] = 0  # Reset block count if invalid
+                        except (ValueError, TypeError):
+                            fields[9] = 0
 
                     self.addRow(fields)
                 except Exception as e:

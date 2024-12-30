@@ -22,27 +22,32 @@ class GffSheet(Sheet):
         Column(name="seqid", getter=lambda c,r: r[0], type=str),
         Column(name="source", getter=lambda c,r: r[1], type=str), 
         Column(name="type", getter=lambda c,r: r[2], type=str),
-        Column(name="start", getter=lambda c,r: r[3], type=int),
-        Column(name="end", getter=lambda c,r: r[4], type=int),
-        Column(name="score", getter=lambda c,r: None if r[5]=="." else float(r[5])),
-        Column(name="strand", getter=lambda c,r: r[6], type=str),
-        Column(name="phase", getter=lambda c,r: r[7], type=str),
-        Column(name="attributes", getter=lambda c,r: r[8], type=str)
+        Column(name="start", getter=lambda c,r: int(r[3]) if r[3] != '.' else None, type=int),
+        Column(name="end", getter=lambda c,r: int(r[4]) if r[4] != '.' else None, type=int),
+        Column(name="score", getter=lambda c,r: float(r[5]) if r[5] != '.' else None, type=float),
+        Column(name="strand", getter=lambda c,r: r[6] if r[6] != '.' else None, type=str),
+        Column(name="phase", getter=lambda c,r: r[7] if r[7] != '.' else None, type=str),
+        Column(name="attributes", getter=lambda c,r: r[8] if r[8] != '.' else None, type=str)
     ]
 
     def iterload(self):
-        for line in Progress(self.source, 'loading'):
-            try:
-                if line.startswith('#') or not line.strip():
-                    continue
-                    
-                fields = line.rstrip('\n').split('\t')
-                if len(fields) >= 9:
+        with self.source.open_text() as fp:
+            lines = list(fp)
+            for line in Progress(lines, 'loading'):
+                try:
+                    if line.startswith('#') or not line.strip():
+                        continue
+                        
+                    fields = line.rstrip('\n').split('\t')
+                    if not fields or len(fields) < 9:
+                        vd.warning(f'skipping invalid line (expected 9 fields, got {len(fields)}): {line}')
+                        continue
+                    # Pad any missing fields with '.'
+                    while len(fields) < 9:
+                        fields.append('.')
                     yield fields
-                else:
-                    vd.warning(f'skipping invalid line: {line}')
-            except Exception as e:
-                vd.warning(f'error parsing line: {e}')
+                except Exception as e:
+                    vd.warning(f'error parsing line: {e}')
 
 
 @VisiData.api
@@ -98,3 +103,4 @@ def save_gff(p, *sheets):
                 
 # Register GFF format detection
 vd.filetype('gff', GffSheet)
+vd.guess_handlers.append(guess_gff)

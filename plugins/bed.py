@@ -63,13 +63,13 @@ class BedSheet(TsvSheet):
         self.rows = []
 
         def make_getter(idx, type_func=str):
-            def getter(col, row):
+            def getter(row):
                 try:
                     return type_func(row[idx]) if row and len(row) > idx else None
                 except (IndexError, ValueError, TypeError):
                     return None
 
-            return getter
+            return lambda col, row: getter(row)
 
         # Required BED fields
         self.addColumn(Column(name="chrom", type=str, getter=make_getter(0)))

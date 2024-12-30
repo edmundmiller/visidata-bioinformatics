@@ -2,7 +2,16 @@
 
 from copy import copy
 
-from visidata import Sheet, TsvSheet, Column, options, vd, VisiData
+from visidata import (
+    Sheet,
+    TsvSheet,
+    Column,
+    options,
+    vd,
+    VisiData,
+    asyncthread,
+    Progress,
+)
 
 
 @VisiData.api
@@ -39,25 +48,25 @@ class BedSheet(TsvSheet):
     def __init__(self, name, source=None, **kwargs):
         super().__init__(name, source=source, delimiter="\t", headerlines=0, **kwargs)
 
+    @asyncthread
     def reload(self):
-        super().reload()
-        
-        # Clear existing columns and add our BED-specific ones
         self.columns = []
-        
+        self.rows = []
+
         def make_getter(idx, type_func=str):
             def getter(col, row):
                 try:
-                    return type_func(row[idx])
-                except (IndexError, ValueError):
+                    return type_func(row[idx]) if row and len(row) > idx else None
+                except (IndexError, ValueError, TypeError):
                     return None
+
             return getter
-        
+
         # Required BED fields
         self.addColumn(Column(name="chrom", getter=make_getter(0)))
         self.addColumn(Column(name="start", getter=make_getter(1, int)))
         self.addColumn(Column(name="end", getter=make_getter(2, int)))
-        
+
         # Optional BED fields with their types
         optional_cols = [
             ("name", 3, str),
@@ -70,25 +79,18 @@ class BedSheet(TsvSheet):
             ("blockSizes", 10, str),
             ("blockStarts", 11, str),
         ]
-        
+
         for name, idx, type_func in optional_cols:
             self.addColumn(Column(name=name, getter=make_getter(idx, type_func)))
 
-    def iterload(self):
+        # Load the data
         with self.source.open_text() as fp:
-            for line in fp:
-                line = line.rstrip('\n')
+            for line in Progress(fp, total=None):
+                line = line.rstrip("\n")
                 if not line or line.startswith(("#", "track", "browser")):
                     continue
-                fields = line.split(self.delimiter)
-                yield fields
-
-
-@VisiData.api
-def open_usv(vd, p):
-    return TsvSheet(p.base_stem, source=p, delimiter="\u241f", row_delimiter="\u241e")
-
-
-@VisiData.api
-def save_usv(vd, p, vs):
-    vd.save_tsv(p, vs, row_delimiter="\u241e", delimiter="\u241f")
+                try:
+                    fields = line.split(self.delimiter)
+                    self.addRow(fields)
+                except Exception as e:
+                    vd.warning(f"error parsing line: {line[:50]}... {str(e)}")

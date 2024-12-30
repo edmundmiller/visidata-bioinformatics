@@ -85,7 +85,7 @@ class BedSheet(TsvSheet):
 
         # Load the data
         with self.source.open_text() as fp:
-            for line in Progress(fp, total=None):
+            for line in Progress(fp.readlines(), 'loading BED file'):
                 line = line.rstrip("\n")
                 if not line or line.startswith(("#", "track", "browser")):
                     continue
@@ -94,3 +94,4 @@ class BedSheet(TsvSheet):
                     self.addRow(fields)
                 except Exception as e:
                     vd.warning(f"error parsing line: {line[:50]}... {str(e)}")
+                    self.addRow([line]) # Add the problematic line as a single-column row

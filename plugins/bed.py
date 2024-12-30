@@ -72,9 +72,9 @@ class BedSheet(TsvSheet):
             return lambda col, row: getter(row)
 
         # Required BED fields
-        self.addColumn(Column(name="chrom", type=str, getter=make_getter(0)))
-        self.addColumn(Column(name="start", type=int, getter=make_getter(1, int)))
-        self.addColumn(Column(name="end", type=int, getter=make_getter(2, int)))
+        self.addColumn(Column(name="chrom", type=str, getter_type=make_getter(0)))
+        self.addColumn(Column(name="start", type=int, getter_type=make_getter(1, int)))
+        self.addColumn(Column(name="end", type=int, getter_type=make_getter(2, int)))
 
         # Optional BED fields with their types
         optional_cols = [

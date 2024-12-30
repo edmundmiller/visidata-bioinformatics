@@ -45,7 +45,7 @@ def open_bed(vd, p):
             return TsvSheet(p.name, source=p)
         return sheet
     except Exception as e:
-        vd.warning(f'Failed to parse as BED ({str(e)}), falling back to TSV')
+        vd.warning(f"Failed to parse as BED ({str(e)}), falling back to TSV")
         return TsvSheet(p.name, source=p)
 
 
@@ -81,7 +81,11 @@ class BedSheet(TsvSheet):
             ("name", 3, str),  # Name of region
             ("score", 4, float),  # Score from 0-1000
             ("strand", 5, str),  # + or - for strand
-            ("thickStart", 6, int),  # Starting position at which feature is drawn thickly
+            (
+                "thickStart",
+                6,
+                int,
+            ),  # Starting position at which feature is drawn thickly
             ("thickEnd", 7, int),  # Ending position at which feature is drawn thickly
             ("itemRgb", 8, str),  # RGB color value (e.g., 255,0,0)
             ("blockCount", 9, int),  # Number of blocks (exons)
@@ -95,14 +99,14 @@ class BedSheet(TsvSheet):
         # Load the data
         with self.source.open_text() as fp:
             lines = fp.readlines()
-            for line in Progress(lines, 'loading BED file'):
+            for line in Progress(lines, "loading BED file"):
                 line = line.rstrip("\n")
                 if not line:
                     continue
                 if line.startswith(("browser", "#")):
                     continue
                 if line.startswith("track"):
-                    # Parse track line but don't add as row
+                    # TODO Parse track line but don't add as row
                     continue
                 try:
                     fields = line.split("\t")  # Explicitly split on tabs
@@ -116,7 +120,9 @@ class BedSheet(TsvSheet):
                         fields[1] = int(fields[1])  # chromStart (0-based)
                         fields[2] = int(fields[2])  # chromEnd (1-based, non-inclusive)
                     except ValueError as e:
-                        vd.warning(f"invalid coordinates in line: {line[:50]}... {str(e)}")
+                        vd.warning(
+                            f"invalid coordinates in line: {line[:50]}... {str(e)}"
+                        )
                         continue
 
                     # Handle optional fields if present

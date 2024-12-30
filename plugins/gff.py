@@ -44,15 +44,31 @@ class GffSheet(TsvSheet):
                 yield row
 
 
-# Add GFF format with .gff and .gff3 extensions
-vd.save_filetype("gff", "tsv")
-vd.save_filetype("gff3", "tsv")
+@VisiData.api
+def guess_gff(vd, p):
+    """Guess if file is a GFF format based on content"""
+    with p.open_text() as fp:
+        for line in fp:
+            if line.startswith('#'):
+                continue
+            if not line.strip():
+                continue
+            fields = line.strip().split('\t')
+            if len(fields) >= 9:  # GFF requires exactly 9 fields
+                try:
+                    int(fields[3])  # start position
+                    int(fields[4])  # end position
+                    return dict(filetype='gff', _likelihood=9)
+                except ValueError:
+                    pass
+            break
+    return None
 
 
-def open_gff(p):
+@VisiData.api
+def open_gff(vd, p):
     return GffSheet(p.name, source=p)
 
 
-# Register the GFF opener
-vd.openfile_extensions.append("gff")
-vd.openfile_extensions.append("gff3")
+# Add GFF format detection
+VisiData.guess_handlers.append(guess_gff)

@@ -96,19 +96,43 @@ class BedSheet(TsvSheet):
                     # Parse track line but don't add as row
                     continue
                 try:
-                    fields = line.split(self.delimiter)
+                    fields = line.split("\t")  # Explicitly split on tabs
                     # Ensure minimum 3 fields
                     if len(fields) < 3:
                         vd.warning(f"skipping line with too few fields: {line[:50]}...")
                         continue
-                    # Validate integer fields
-                    fields[1] = int(fields[1])  # start
-                    fields[2] = int(fields[2])  # end
-                    if len(fields) > 4:
+
+                    # Convert coordinates - BED uses 0-based start and 1-based end
+                    try:
+                        fields[1] = int(fields[1])  # chromStart (0-based)
+                        fields[2] = int(fields[2])  # chromEnd (1-based, non-inclusive)
+                    except ValueError as e:
+                        vd.warning(f"invalid coordinates in line: {line[:50]}... {str(e)}")
+                        continue
+
+                    # Handle optional fields if present
+                    if len(fields) >= 5:  # score field exists
                         try:
-                            fields[4] = float(fields[4])  # score
+                            score = float(fields[4])
+                            # Score should be between 0 and 1000
+                            fields[4] = min(max(score, 0), 1000)
                         except (ValueError, TypeError):
-                            fields[4] = 0.0
+                            fields[4] = 0
+
+                    if len(fields) >= 10:  # blockCount exists
+                        try:
+                            fields[9] = int(fields[9])  # blockCount
+                        except (ValueError, TypeError):
+                            fields[9] = 0
+
+                    if len(fields) >= 7:  # thickStart/End exist
+                        try:
+                            fields[6] = int(fields[6])  # thickStart
+                            fields[7] = int(fields[7])  # thickEnd
+                        except (ValueError, TypeError):
+                            fields[6] = fields[1]  # default to chromStart
+                            fields[7] = fields[2]  # default to chromEnd
+
                     self.addRow(fields)
                 except Exception as e:
                     vd.warning(f"error parsing line: {line[:50]}... {str(e)}")

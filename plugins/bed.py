@@ -37,7 +37,16 @@ def guess_bed(vd, p):
 
 @VisiData.api
 def open_bed(vd, p):
-    return BedSheet(p.name, source=p)
+    """Try to open as BED, fall back to TSV if parsing fails"""
+    try:
+        sheet = BedSheet(p.name, source=p)
+        sheet.reload()
+        if not sheet.rows:  # If no rows were successfully parsed
+            return TsvSheet(p.name, source=p)
+        return sheet
+    except Exception as e:
+        vd.warning(f'Failed to parse as BED ({str(e)}), falling back to TSV')
+        return TsvSheet(p.name, source=p)
 
 
 class BedSheet(TsvSheet):

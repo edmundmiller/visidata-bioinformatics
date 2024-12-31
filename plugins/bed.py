@@ -85,13 +85,57 @@ class TrackAttributesSheet(Sheet):
 
 
 class BedSheet(TsvSheet):
-    """Sheet for displaying BED format data"""
+    """Sheet for displaying BED format data.
+    
+    Handles the Browser Extensible Data (BED) format which defines genomic regions.
+    Supports required fields (chrom, start, end) and optional fields including:
+    - name: Name/ID of the feature
+    - score: Score from 0-1000
+    - strand: + or - for strand
+    - thickStart/End: Positions for thick drawing
+    - itemRgb: Color in RGB or hex format
+    - blockCount/Sizes/Starts: Exon/block structure
+    """
 
     rowtype = "regions"  # rowdef: list of fields
     
     def __init__(self, name, source=None, **kwargs):
         super().__init__(name, source=source, delimiter="\t", headerlines=0, **kwargs)
         self.track_lines = []  # Store track lines for later reference
+        
+    def openRow(self, row):
+        """Allow diving into track attributes when row is a track line"""
+        if isinstance(row, str) and row.startswith('track'):
+            return TrackAttributesSheet(name=f"track_attributes", source=row)
+        return None
+
+    def validate_blocks(self, start, end, block_count, block_sizes, block_starts):
+        """Validate block coordinates are within feature bounds"""
+        if not (block_sizes and block_starts):
+            return 0, "", ""
+            
+        sizes = [int(x) for x in block_sizes.rstrip(',').split(',')]
+        starts = [int(x) for x in block_starts.rstrip(',').split(',')]
+        
+        if len(sizes) != len(starts):
+            return 0, "", ""
+            
+        # Validate each block
+        valid_sizes = []
+        valid_starts = []
+        for size, rel_start in zip(sizes, starts):
+            abs_start = start + rel_start
+            abs_end = abs_start + size
+            
+            # Block must be within feature bounds
+            if abs_start >= start and abs_end <= end:
+                valid_sizes.append(str(size))
+                valid_starts.append(str(rel_start))
+                
+        if not valid_sizes:
+            return 0, "", ""
+            
+        return len(valid_sizes), ",".join(valid_sizes), ",".join(valid_starts)
 
     @asyncthread
     def reload(self):
@@ -122,9 +166,16 @@ class BedSheet(TsvSheet):
             return strand if strand in ('+', '-', '.') else '.'
 
         def validate_rgb(rgb):
-            """Validate RGB string format"""
+            """Validate RGB string format (comma-separated or hex)"""
             try:
-                r,g,b = map(int, rgb.split(','))
+                if rgb.startswith('#'):
+                    # Convert hex to RGB
+                    rgb = rgb.lstrip('#')
+                    r = int(rgb[0:2], 16)
+                    g = int(rgb[2:4], 16)
+                    b = int(rgb[4:6], 16)
+                else:
+                    r,g,b = map(int, rgb.split(','))
                 return f"{min(max(r,0),255)},{min(max(g,0),255)},{min(max(b,0),255)}"
             except:
                 return "0,0,0"
@@ -208,14 +259,15 @@ class BedSheet(TsvSheet):
                     if len(fields) >= 10:  # blockCount/Sizes/Starts exist
                         try:
                             block_count = int(fields[9])
-                            if block_count > 0:
-                                # Validate block sizes and starts if present
-                                if len(fields) >= 12:
-                                    sizes = fields[10].rstrip(',').split(',')
-                                    starts = fields[11].rstrip(',').split(',')
-                                    if len(sizes) != block_count or len(starts) != block_count:
-                                        vd.warning(f"mismatched block counts in line: {line[:50]}...")
-                                        fields[9] = 0  # Reset block count if invalid
+                            if block_count > 0 and len(fields) >= 12:
+                                # Validate and clean block coordinates
+                                valid_count, valid_sizes, valid_starts = self.validate_blocks(
+                                    start, end, block_count,
+                                    fields[10], fields[11]
+                                )
+                                fields[9] = valid_count
+                                fields[10] = valid_sizes
+                                fields[11] = valid_starts
                         except (ValueError, TypeError):
                             fields[9] = 0
 

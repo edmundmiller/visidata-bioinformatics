@@ -122,7 +122,7 @@ class BedSheet(TsvSheet):
         self.rows = []
 
         def make_getter(idx, type_func=str, validator=None):
-            def getter(col, row):
+            def getter(row):
                 try:
                     val = type_func(row[idx]) if row and len(row) > idx else None
                     if validator and val is not None:
@@ -160,9 +160,9 @@ class BedSheet(TsvSheet):
                 return "0,0,0"
 
         # Required BED fields with validation
-        self.addColumn(Column(name="chrom", type=str, getter_type=make_getter(0)))
-        self.addColumn(Column(name="start", type=int, getter_type=make_getter(1, int)))
-        self.addColumn(Column(name="end", type=int, getter_type=make_getter(2, int)))
+        self.addColumn(Column(name="chrom", type=str, getter=make_getter(0)))
+        self.addColumn(Column(name="start", type=int, getter=make_getter(1, int)))
+        self.addColumn(Column(name="end", type=int, getter=make_getter(2, int)))
 
         # Optional BED fields with their types and validators
         optional_cols = [
@@ -178,7 +178,7 @@ class BedSheet(TsvSheet):
         ]
 
         for name, idx, type_func, validator in optional_cols:
-            self.addColumn(Column(name=name, getter=make_getter(idx, type_func, validator)))
+            self.addColumn(Column(name=name, type=type_func, getter=make_getter(idx, type_func, validator)))
 
         # Load the data
         with self.source.open_text() as fp:

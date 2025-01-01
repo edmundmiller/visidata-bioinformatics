@@ -139,4 +139,3 @@ def save_gff(p, *sheets):
                 
 # Register GFF format detection
 vd.filetype('gff', GffSheet)
-vd.guess_handlers.append(guess_gff)

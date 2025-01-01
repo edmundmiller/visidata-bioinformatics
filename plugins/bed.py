@@ -17,27 +17,6 @@ from visidata import (
 
 
 @VisiData.api
-def guess_bed(vd, p):
-    """Guess if file is a BED format based on content"""
-    with p.open_text() as fp:
-        for line in fp:
-            if line.startswith(("#", "track", "browser")):
-                continue
-            if not line.strip():
-                continue
-            fields = line.strip().split("\t")
-            if len(fields) >= 3:
-                try:
-                    int(fields[1])
-                    int(fields[2])
-                    return dict(filetype="bed", _likelihood=9)
-                except ValueError:
-                    pass
-            break
-    return None
-
-
-@VisiData.api
 def open_bed(vd, p):
     """Try to open as BED, fall back to TSV if parsing fails"""
     try:
@@ -266,3 +245,6 @@ class BedSheet(TsvSheet):
                     self.addRow(fields)
                 except Exception as e:
                     vd.warning(f"error parsing line: {line[:50]}... {str(e)}")
+
+        # Register BED format detection
+        vd.option('filetype', 'bed', 'BED', BedSheet)

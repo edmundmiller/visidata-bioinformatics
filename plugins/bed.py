@@ -206,15 +206,7 @@ class BedSheet(TsvSheet):
             lines = fp.readlines()
             for line in Progress(lines, "loading BED file"):
                 line = line.rstrip("\n")
-                if not line:
-                    continue
-                if line.startswith("#"):
-                    continue
-                if line.startswith("browser"):
-                    # Store browser lines but don't add as rows
-                    continue
-                if line.startswith("track"):
-                    self.track_lines.append(line)
+                if not line or line.startswith(("#", "browser", "track")):
                     continue
                 try:
                     fields = line.split("\t")  # Explicitly split on tabs

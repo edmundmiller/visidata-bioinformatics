@@ -122,7 +122,7 @@ class BedSheet(TsvSheet):
         self.rows = []
 
         def make_getter(idx, type_func=str, validator=None):
-            def getter(row):
+            def getter(sheet, row):
                 try:
                     val = type_func(row[idx]) if row and len(row) > idx else None
                     if validator and val is not None:

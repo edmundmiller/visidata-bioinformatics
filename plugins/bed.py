@@ -160,9 +160,9 @@ class BedSheet(TsvSheet):
                 return "0,0,0"
 
         # Required BED fields with validation
-        self.addColumn(Column(name="chrom", type=str, getter=make_getter(0)))
-        self.addColumn(Column(name="start", type=int, getter=make_getter(1, int)))
-        self.addColumn(Column(name="end", type=int, getter=make_getter(2, int)))
+        self.addColumn(Column(name="chrom", type=str, getter=lambda sheet,row,col: make_getter(0)(sheet, row)))
+        self.addColumn(Column(name="start", type=int, getter=lambda sheet,row,col: make_getter(1, int)(sheet, row)))
+        self.addColumn(Column(name="end", type=int, getter=lambda sheet,row,col: make_getter(2, int)(sheet, row)))
 
         # Optional BED fields with their types and validators
         optional_cols = [
@@ -178,7 +178,8 @@ class BedSheet(TsvSheet):
         ]
 
         for name, idx, type_func, validator in optional_cols:
-            self.addColumn(Column(name=name, type=type_func, getter=make_getter(idx, type_func, validator)))
+            self.addColumn(Column(name=name, type=type_func, 
+                getter=lambda sheet,row,col,idx=idx,type_func=type_func,validator=validator: make_getter(idx, type_func, validator)(sheet, row)))
 
         # Load the data
         with self.source.open_text() as fp:

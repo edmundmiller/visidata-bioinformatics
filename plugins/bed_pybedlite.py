@@ -49,33 +49,43 @@ class BedPyblSheet(Sheet):
         """Load BED records from file."""
         self.rows = []
         
+        vd.status('Starting BED file load...')
+        
         # First pass to collect header lines
+        header_count = 0
         with self.source.open_text() as fp:
             for line in fp:
                 line = line.rstrip('\n')
                 if line.startswith(('#', 'browser', 'track')):
                     self.header_lines.append(line)
+                    header_count += 1
+        
+        vd.status(f'Found {header_count} header lines')
                     
         # Second pass to load records using pybedlite
         try:
             bed_path = Path(self.source.resolve())
-            vd.debug(f'Opening BED file: {bed_path}')
+            vd.status(f'Processing BED file: {bed_path}')
             
             # Debug: Print first few lines of file
             with bed_path.open() as preview:
                 first_lines = [next(preview) for _ in range(5)]
-                vd.debug(f'First 5 lines:\n{"".join(first_lines)}')
+                vd.status(f'First line preview: {first_lines[0].strip()}')
             
             with bed_path.open() as bed_file:
+                vd.status('Creating pybedlite reader...')
                 reader = pybed.reader(bed_file)
-                vd.debug(f'Created pybedlite reader: {reader}')
                 
                 count = 0
                 for record in reader:
+                    if count == 0:
+                        vd.status(f'First record found: {record}')
                     self.addRow(record)
                     count += 1
+                    if count % 1000 == 0:
+                        vd.status(f'Loaded {count} records...')
                     
-                vd.debug(f'Loaded {count} BED records')
+                vd.status(f'Completed loading {count} BED records')
                 
         except Exception as e:
             vd.warning(f"Error reading BED file: {str(e)}")

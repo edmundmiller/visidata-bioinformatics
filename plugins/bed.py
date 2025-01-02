@@ -122,17 +122,24 @@ class BedSheet(TsvSheet):
         self.rows = []
 
         def make_getter(idx, type_func=str, validator=None):
-            def _getter(row):
+            def getter(sheet, row, *args):
+                if not row:
+                    return None
                 try:
-                    val = type_func(row[idx]) if row and len(row) > idx else None
-                    if validator and val is not None:
-                        val = validator(val)
-                    return val
+                    if len(row) <= idx:
+                        return None
+                    val = row[idx]
+                    # Preserve comma-separated strings for specific fields
+                    if isinstance(val, str) and ',' in val and idx in (10, 11):  # blockSizes, blockStarts
+                        return val.rstrip(',')  # Clean trailing commas
+                    if isinstance(val, str) and ',' in val and idx == 8:  # itemRgb
+                        return val  # Preserve RGB format
+                    # Apply type conversion for non-comma fields
+                    val = type_func(val) if val is not None else None
+                    # Apply validator if provided
+                    return validator(val) if validator and val is not None else val
                 except (IndexError, ValueError, TypeError):
                     return None
-            
-            def getter(sheet, row, *args):
-                return _getter(row)
             return getter
 
         def validate_score(score):

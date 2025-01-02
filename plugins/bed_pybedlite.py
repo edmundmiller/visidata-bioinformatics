@@ -1,6 +1,7 @@
 """VisiData loader for BED (Browser Extensible Data) files using pybedlite."""
 
 import pybedlite as pybed
+from pathlib import Path
 from visidata import VisiData, Sheet, Column, vd, asyncthread, options
 
 
@@ -35,79 +36,49 @@ class BedPyblSheet(Sheet):
         self.addColumn(Column("end", type=int, getter=lambda col, row: row.end))
         self.addColumn(Column("name", getter=lambda col, row: row.name))
         self.addColumn(Column("score", type=float, getter=lambda col, row: row.score))
-        self.addColumn(
-            Column(
-                "strand",
-                getter=lambda col, row: "+"
-                if not row.strand
-                else "-"
-                if row.strand.negative
-                else "+",
-            )
-        )
-        self.addColumn(
-            Column("thickStart", type=int, getter=lambda col, row: row.thick_start)
-        )
-        self.addColumn(
-            Column("thickEnd", type=int, getter=lambda col, row: row.thick_end)
-        )
-        self.addColumn(
-            Column(
-                "itemRgb",
-                getter=lambda col, row: ",".join(map(str, row.item_rgb))
-                if row.item_rgb
-                else None,
-            )
-        )
-        self.addColumn(
-            Column("blockCount", type=int, getter=lambda col, row: row.block_count)
-        )
-        self.addColumn(
-            Column(
-                "blockSizes",
-                getter=lambda col, row: ",".join(map(str, row.block_sizes))
-                if row.block_sizes
-                else None,
-            )
-        )
-        self.addColumn(
-            Column(
-                "blockStarts",
-                getter=lambda col, row: ",".join(map(str, row.block_starts))
-                if row.block_starts
-                else None,
-            )
-        )
+        self.addColumn(Column("strand", getter=lambda col, row: row.strand))
+        self.addColumn(Column("thickStart", type=int, getter=lambda col, row: row.thick_start))
+        self.addColumn(Column("thickEnd", type=int, getter=lambda col, row: row.thick_end))
+        self.addColumn(Column("itemRgb", getter=lambda col, row: ",".join(map(str, row.item_rgb)) if row.item_rgb else None))
+        self.addColumn(Column("blockCount", type=int, getter=lambda col, row: row.block_count))
+        self.addColumn(Column("blockSizes", getter=lambda col, row: ",".join(map(str, row.block_sizes)) if row.block_sizes else None))
+        self.addColumn(Column("blockStarts", getter=lambda col, row: ",".join(map(str, row.block_starts)) if row.block_starts else None))
 
     @asyncthread
     def reload(self):
         """Load BED records from file."""
         self.rows = []
         
-        # Process the file line by line
+        # First pass to collect header lines
         with self.source.open_text() as fp:
             for line in fp:
                 line = line.rstrip('\n')
-                if not line:
-                    continue
-                    
                 if line.startswith(('#', 'browser', 'track')):
                     self.header_lines.append(line)
-                    continue
+                    
+        # Second pass to load records using pybedlite
+        try:
+            bed_path = Path(self.source.resolve())
+            vd.debug(f'Opening BED file: {bed_path}')
+            
+            # Debug: Print first few lines of file
+            with bed_path.open() as preview:
+                first_lines = [next(preview) for _ in range(5)]
+                vd.debug(f'First 5 lines:\n{"".join(first_lines)}')
+            
+            with bed_path.open() as bed_file:
+                reader = pybed.reader(bed_file)
+                vd.debug(f'Created pybedlite reader: {reader}')
                 
-                try:
-                    # Create BedRecord from the line
-                    record = pybed.BedRecord.from_string(line)
-                    
-                    # Basic validation
-                    if record.start < 0:
-                        vd.warning(f"Skipping record with negative start: {line}")
-                        continue
-                    if record.end <= record.start:
-                        vd.warning(f"Skipping record with invalid coordinates: {line}")
-                        continue
-                    
+                count = 0
+                for record in reader:
                     self.addRow(record)
-                except Exception as e:
-                    vd.warning(f"Error processing line: {line[:50]}... {str(e)}")
+                    count += 1
+                    
+                vd.debug(f'Loaded {count} BED records')
+                
+        except Exception as e:
+            vd.warning(f"Error reading BED file: {str(e)}")
+            import traceback
+            vd.debug(traceback.format_exc())
 

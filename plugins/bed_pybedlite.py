@@ -84,28 +84,30 @@ class BedPyblSheet(Sheet):
         """Load BED records from file."""
         self.rows = []
         
-        # First pass to collect headers
+        # Process the file line by line
         with self.source.open_text() as fp:
             for line in fp:
+                line = line.rstrip('\n')
+                if not line:
+                    continue
+                    
                 if line.startswith(('#', 'browser', 'track')):
-                    self.header_lines.append(line.rstrip('\n'))
-        
-        # Second pass to load records
-        try:
-            with pybed.reader(self.source.resolve()) as reader:
-                for record in reader:
-                    try:
-                        # Basic validation
-                        if record.start < 0:
-                            vd.warning(f"Skipping record with negative start: {record}")
-                            continue
-                        if record.end <= record.start:
-                            vd.warning(f"Skipping record with invalid coordinates: {record}")
-                            continue
-                        
-                        self.addRow(record)
-                    except Exception as e:
-                        vd.warning(f"Error processing record: {str(e)}")
-        except Exception as e:
-            vd.warning(f"Error loading BED file: {str(e)}")
+                    self.header_lines.append(line)
+                    continue
+                
+                try:
+                    # Create BedRecord from the line
+                    record = pybed.BedRecord.from_string(line)
+                    
+                    # Basic validation
+                    if record.start < 0:
+                        vd.warning(f"Skipping record with negative start: {line}")
+                        continue
+                    if record.end <= record.start:
+                        vd.warning(f"Skipping record with invalid coordinates: {line}")
+                        continue
+                    
+                    self.addRow(record)
+                except Exception as e:
+                    vd.warning(f"Error processing line: {line[:50]}... {str(e)}")
 

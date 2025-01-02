@@ -79,8 +79,9 @@ class BedSheet(TsvSheet):
     rowtype = "regions"  # rowdef: list of fields
     
     def __init__(self, name, source=None, **kwargs):
-        super().__init__(name, source=source, delimiter="\t", headerlines=0, **kwargs)
+        super().__init__(name, source=source, delimiter="\t", **kwargs)
         self.track_lines = []  # Store track lines for later reference
+        self.header_lines = []  # Store browser/track/comment lines
         
     def openRow(self, row):
         """Allow diving into track attributes when row is a track line"""
@@ -122,25 +123,23 @@ class BedSheet(TsvSheet):
         self.rows = []
 
         def make_getter(idx, type_func=str, validator=None):
-            def getter(sheet, row, *args):
-                if not row:
+            def _getter(row):
+                if not row or idx >= len(row):
                     return None
                 try:
-                    if len(row) <= idx:
-                        return None
                     val = row[idx]
-                    # Preserve comma-separated strings for specific fields
-                    if isinstance(val, str) and ',' in val and idx in (10, 11):  # blockSizes, blockStarts
-                        return val.rstrip(',')  # Clean trailing commas
-                    if isinstance(val, str) and ',' in val and idx == 8:  # itemRgb
-                        return val  # Preserve RGB format
-                    # Apply type conversion for non-comma fields
+                    # Special handling for comma-separated values
+                    if isinstance(val, str) and ',' in val and type_func == str:
+                        return val.rstrip(',')
+                    # Normal type conversion
                     val = type_func(val) if val is not None else None
-                    # Apply validator if provided
+                    # Apply validator if provided 
                     return validator(val) if validator and val is not None else val
                 except (IndexError, ValueError, TypeError):
                     return None
-            return getter
+
+            # Create a wrapper that matches VisiData's expected signature
+            return lambda sheet, row, *args: _getter(row)
 
         def validate_score(score):
             """Validate and clamp score between 0-1000"""
@@ -195,7 +194,10 @@ class BedSheet(TsvSheet):
             lines = fp.readlines()
             for line in Progress(lines, "loading BED file"):
                 line = line.rstrip("\n")
-                if not line or line.startswith(("#", "browser", "track")):
+                if not line:
+                    continue
+                if line.startswith(("#", "browser", "track")):
+                    self.header_lines.append(line)
                     continue
                 try:
                     fields = line.split("\t")  # Explicitly split on tabs

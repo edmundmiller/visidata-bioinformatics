@@ -11,6 +11,9 @@ def open_bed(vd, p):
     try:
         sheet = BedPyblSheet(p.name, source=p)
         sheet.reload()
+        # Wait for async reload to complete
+        while sheet.loading:
+            pass
         if not sheet.rows:  # If no rows were successfully parsed
             vd.warning("No valid BED records found, falling back to TSV")
             return vd.openSource(p, filetype='tsv')
@@ -35,19 +38,29 @@ class BedPyblSheet(Sheet):
         self.addColumn(Column("start", type=int, getter=lambda col, row: row.start))
         self.addColumn(Column("end", type=int, getter=lambda col, row: row.end))
         self.addColumn(Column("name", getter=lambda col, row: row.name))
-        self.addColumn(Column("score", type=float, getter=lambda col, row: row.score))
+        self.addColumn(Column("score", getter=lambda col, row: self._safe_convert(row.score, float)))
         self.addColumn(Column("strand", getter=lambda col, row: row.strand))
-        self.addColumn(Column("thickStart", type=int, getter=lambda col, row: row.thick_start))
-        self.addColumn(Column("thickEnd", type=int, getter=lambda col, row: row.thick_end))
+        self.addColumn(Column("thickStart", getter=lambda col, row: self._safe_convert(row.thick_start, int)))
+        self.addColumn(Column("thickEnd", getter=lambda col, row: self._safe_convert(row.thick_end, int)))
         self.addColumn(Column("itemRgb", getter=lambda col, row: ",".join(map(str, row.item_rgb)) if row.item_rgb else None))
-        self.addColumn(Column("blockCount", type=int, getter=lambda col, row: row.block_count))
+        self.addColumn(Column("blockCount", getter=lambda col, row: self._safe_convert(row.block_count, int)))
         self.addColumn(Column("blockSizes", getter=lambda col, row: ",".join(map(str, row.block_sizes)) if row.block_sizes else None))
         self.addColumn(Column("blockStarts", getter=lambda col, row: ",".join(map(str, row.block_starts)) if row.block_starts else None))
 
-    @asyncthread
+    def _safe_convert(self, value, type_func):
+        """Safely convert value to given type, return None if fails"""
+        if value is None or value == '':
+            return None
+        try:
+            return type_func(value)
+        except (ValueError, TypeError):
+            vd.debug(f'Could not convert {value} to {type_func.__name__}')
+            return value  # Return original value instead of None
+
     def reload(self):
         """Load BED records from file."""
         self.rows = []
+        self.loading = True
         
         vd.status('Starting BED file load...')
         
@@ -91,4 +104,6 @@ class BedPyblSheet(Sheet):
             vd.warning(f"Error reading BED file: {str(e)}")
             import traceback
             vd.debug(traceback.format_exc())
+        finally:
+            self.loading = False
 

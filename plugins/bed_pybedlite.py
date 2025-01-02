@@ -5,9 +5,18 @@ from visidata import VisiData, Sheet, Column, vd, asyncthread, options
 
 
 @VisiData.api
-def open_bed_pybedlite(vd, p):
-    """Open a BED file using pybedlite."""
-    return BedPyblSheet(p.name, source=p)
+def open_bed(vd, p):
+    """Try to open as BED, fall back to TSV if parsing fails"""
+    try:
+        sheet = BedPyblSheet(p.name, source=p)
+        sheet.reload()
+        if not sheet.rows:  # If no rows were successfully parsed
+            vd.warning("No valid BED records found, falling back to TSV")
+            return vd.openSource(p, filetype='tsv')
+        return sheet
+    except Exception as e:
+        vd.warning(f"Failed to parse as BED ({str(e)}), falling back to TSV")
+        return vd.openSource(p, filetype='tsv')
 
 
 class BedPyblSheet(Sheet):
@@ -18,6 +27,7 @@ class BedPyblSheet(Sheet):
     def __init__(self, name, source=None, **kwargs):
         super().__init__(name, source=source, **kwargs)
         self.columns = []
+        self.header_lines = []  # Store browser/track/comment lines
 
         # Define columns based on BedRecord attributes
         self.addColumn(Column("chrom", getter=lambda col, row: row.chrom))
@@ -73,12 +83,29 @@ class BedPyblSheet(Sheet):
     def reload(self):
         """Load BED records from file."""
         self.rows = []
+        
+        # First pass to collect headers
+        with self.source.open_text() as fp:
+            for line in fp:
+                if line.startswith(('#', 'browser', 'track')):
+                    self.header_lines.append(line.rstrip('\n'))
+        
+        # Second pass to load records
         try:
             with pybed.reader(self.source.resolve()) as reader:
                 for record in reader:
-                    self.addRow(record)
+                    try:
+                        # Basic validation
+                        if record.start < 0:
+                            vd.warning(f"Skipping record with negative start: {record}")
+                            continue
+                        if record.end <= record.start:
+                            vd.warning(f"Skipping record with invalid coordinates: {record}")
+                            continue
+                        
+                        self.addRow(record)
+                    except Exception as e:
+                        vd.warning(f"Error processing record: {str(e)}")
         except Exception as e:
             vd.warning(f"Error loading BED file: {str(e)}")
 
-        # Register BED format detection
-        vd.option("filetype", "bed", "BED", BedPyblSheet)

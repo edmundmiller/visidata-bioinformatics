@@ -40,3 +40,6 @@ class BedPyblSheet(Sheet):
                     self.addRow(record)
         except Exception as e:
             vd.warning(f"Error loading BED file: {str(e)}")
+
+        # Register BED format detection
+        vd.option("filetype", "bed", "BED", BedPyblSheet)

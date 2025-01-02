@@ -38,7 +38,7 @@ class BedPyblSheet(Sheet):
         self.addColumn(Column("start", type=int, getter=lambda col, row: row.start))
         self.addColumn(Column("end", type=int, getter=lambda col, row: row.end))
         self.addColumn(Column("name", getter=lambda col, row: row.name))
-        self.addColumn(Column("score", getter=lambda col, row: self._safe_convert(row.score, float)))
+        self.addColumn(Column("score", getter=lambda col, row: row.score))  # Keep as string to handle non-numeric values
         self.addColumn(Column("strand", getter=lambda col, row: row.strand))
         self.addColumn(Column("thickStart", getter=lambda col, row: self._safe_convert(row.thick_start, int)))
         self.addColumn(Column("thickEnd", getter=lambda col, row: self._safe_convert(row.thick_end, int)))
@@ -87,16 +87,44 @@ class BedPyblSheet(Sheet):
             
             with bed_path.open() as bed_file:
                 vd.status('Creating pybedlite reader...')
-                reader = pybed.reader(bed_file)
-                
+                # Skip header lines
+                for _ in range(len(self.header_lines)):
+                    next(bed_file)
+                    
                 count = 0
-                for record in reader:
-                    if count == 0:
-                        vd.status(f'First record found: {record}')
-                    self.addRow(record)
-                    count += 1
-                    if count % 1000 == 0:
-                        vd.status(f'Loaded {count} records...')
+                for line in bed_file:
+                    line = line.strip()
+                    if not line or line.startswith(('#', 'browser', 'track')):
+                        continue
+                        
+                    fields = line.split('\t')
+                    if len(fields) < 3:  # Must have at least chrom, start, end
+                        continue
+                        
+                    try:
+                        record = pybed.BedRecord(
+                            chrom=fields[0],
+                            start=int(fields[1]),
+                            end=int(fields[2]),
+                            name=fields[3] if len(fields) > 3 else None,
+                            score=fields[4] if len(fields) > 4 else None,  # Keep as string
+                            strand=fields[5] if len(fields) > 5 else None,
+                            thick_start=int(fields[6]) if len(fields) > 6 else None,
+                            thick_end=int(fields[7]) if len(fields) > 7 else None,
+                            item_rgb=fields[8].split(',') if len(fields) > 8 and fields[8] != '.' else None,
+                            block_count=int(fields[9]) if len(fields) > 9 and fields[9] != '.' else None,
+                            block_sizes=[int(x) for x in fields[10].rstrip(',').split(',')] if len(fields) > 10 and fields[10] != '.' else None,
+                            block_starts=[int(x) for x in fields[11].rstrip(',').split(',')] if len(fields) > 11 and fields[11] != '.' else None
+                        )
+                        if count == 0:
+                            vd.status(f'First record found: {record}')
+                        self.addRow(record)
+                        count += 1
+                        if count % 1000 == 0:
+                            vd.status(f'Loaded {count} records...')
+                    except (ValueError, IndexError) as e:
+                        vd.debug(f'Skipping malformed record: {line} ({str(e)})')
+                        continue
                     
                 vd.status(f'Completed loading {count} BED records')
                 

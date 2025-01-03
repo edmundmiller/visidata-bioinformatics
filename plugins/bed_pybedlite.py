@@ -2,13 +2,30 @@
 
 import pybedlite as pybed
 from pathlib import Path
-from visidata import VisiData, Sheet, Column, vd, asyncthread, options
+from visidata import (
+    VisiData,
+    Sheet,
+    Column,
+    vd,
+    asyncthread,
+    options,
+    ENTER,
+    TextSheet,
+    IndexSheet,
+)
 
-# Add options for BED file handling
+# Add options for BED file handling and visualization
 options.bed_skip_validation = False  # Whether to skip field validation
 options.bed_default_score = "0"  # Default score when missing
 options.bed_default_name = "."  # Default name when missing
 options.bed_default_strand = "."  # Default strand when missing
+options.bed_color_strands = True  # Color + and - strands differently
+options.bed_max_region_size = 1000000  # Warning threshold for large regions
+
+# Add more BED-specific options
+options.bed_min_region_size = 0  # Minimum region size filter
+options.bed_chrom_order = "natural"  # 'natural' or 'lexical' chromosome sorting
+options.bed_show_gc = False  # Show GC content (requires reference genome)
 
 
 @VisiData.api
@@ -39,6 +56,18 @@ class BedPyblSheet(Sheet):
         super().__init__(name, source=source, **kwargs)
         self.columns = []
         self.header_lines = []  # Store browser/track/comment lines
+
+        # Add commands specific to BED files
+        self.bindkey("g#", "show-region-stats")  # Show statistics about genomic regions
+        self.bindkey("zs", "select-by-strand")  # Select rows by strand
+        self.bindkey("zl", "select-large-regions")  # Select unusually large regions
+        self.bindkey(ENTER, "view-region-details")  # Show detailed view of region
+
+        # Add more commands
+        self.bindkey("zc", "summarize-by-chrom")  # Chromosome summary
+        self.bindkey("zf", "filter-by-size")  # Filter by region size
+        self.bindkey("zm", "merge-overlapping")  # Merge overlapping regions
+        self.bindkey("gd", "distance-to-next")  # Calculate distances between regions
 
         # Define columns based on BedRecord attributes with better descriptions
         self.addColumn(
@@ -117,6 +146,25 @@ class BedPyblSheet(Sheet):
                 if row.block_starts
                 else None,
                 help="Block starts relative to start",
+            )
+        )
+
+        # Add computed columns
+        self.addColumn(
+            Column(
+                "length",
+                getter=lambda col, row: self.get_region_length(row),
+                type=int,
+                help="Region length in bp",
+            )
+        )
+
+        self.addColumn(
+            Column(
+                "distance_to_next",
+                getter=lambda col, row: self._get_distance_to_next(row),
+                type=int,
+                help="Distance to next region",
             )
         )
 
@@ -209,3 +257,167 @@ class BedPyblSheet(Sheet):
         finally:
             self.loading = False
 
+    def colorize_strand(self, row):
+        """Return color based on strand."""
+        if not options.bed_color_strands:
+            return None
+        return "red" if row.strand == "+" else "blue" if row.strand == "-" else None
+
+    def get_region_length(self, row):
+        """Calculate length of genomic region."""
+        return row.end - row.start
+
+    def show_region_stats(self, vd):
+        """Display statistics about the genomic regions."""
+        total_regions = len(self.rows)
+        total_bases = sum(self.get_region_length(row) for row in self.rows)
+        strands = {}
+        chroms = {}
+
+        for row in self.rows:
+            strands[row.strand] = strands.get(row.strand, 0) + 1
+            chroms[row.chrom] = chroms.get(row.chrom, 0) + 1
+
+        vd.status(
+            f"Regions: {total_regions}, Total bases: {total_bases}, "
+            f"Strands: {dict(strands)}, Chromosomes: {len(chroms)}"
+        )
+
+    def select_by_strand(self, vd):
+        """Interactive strand selection."""
+        strand = vd.input("Select strand (+/-/./other): ")
+        for row in self.rows:
+            if row.strand == strand:
+                row.selected = True
+
+    def select_large_regions(self, vd):
+        """Select regions larger than threshold."""
+        threshold = vd.input(
+            "Minimum region size: ", value=str(options.bed_max_region_size)
+        )
+        try:
+            threshold = int(threshold)
+            for row in self.rows:
+                if self.get_region_length(row) > threshold:
+                    row.selected = True
+        except ValueError:
+            vd.warning("Invalid threshold value")
+
+    def view_region_details(self, vd):
+        """Show detailed information about the current region."""
+        row = self.cursorRow
+        length = self.get_region_length(row)
+        details = f"""
+        Region Details:
+        ---------------
+        Chromosome: {row.chrom}
+        Start: {row.start}
+        End: {row.end}
+        Length: {length:,} bp
+        Name: {row.name}
+        Score: {row.score}
+        Strand: {row.strand}
+        """
+        if length > options.bed_max_region_size:
+            details += f"\nWARNING: Region size ({length:,}) exceeds threshold ({options.bed_max_region_size:,})"
+
+        vd.push(TextSheet(f"details_{row.name}", source=details))
+
+    def _get_distance_to_next(self, row):
+        """Calculate distance to next region on same chromosome."""
+        try:
+            idx = self.rows.index(row)
+            next_row = next(
+                (r for r in self.rows[idx + 1 :] if r.chrom == row.chrom), None
+            )
+            if next_row:
+                return next_row.start - row.end
+        except (ValueError, IndexError):
+            pass
+        return None
+
+    def summarize_by_chrom(self, vd):
+        """Create a summary sheet with chromosome statistics."""
+        chrom_stats = {}
+        for row in self.rows:
+            if row.chrom not in chrom_stats:
+                chrom_stats[row.chrom] = {
+                    "count": 0,
+                    "total_length": 0,
+                    "min_length": float("inf"),
+                    "max_length": 0,
+                }
+            stats = chrom_stats[row.chrom]
+            length = self.get_region_length(row)
+            stats["count"] += 1
+            stats["total_length"] += length
+            stats["min_length"] = min(stats["min_length"], length)
+            stats["max_length"] = max(stats["max_length"], length)
+
+        summary_sheet = IndexSheet(f"{self.name}_chrom_summary", source=chrom_stats)
+        summary_sheet.addColumn(Column("chromosome", getter=lambda c, r: r))
+        summary_sheet.addColumn(
+            Column("region_count", getter=lambda c, r: chrom_stats[r]["count"])
+        )
+        summary_sheet.addColumn(
+            Column("total_bp", getter=lambda c, r: chrom_stats[r]["total_length"])
+        )
+        summary_sheet.addColumn(
+            Column("min_length", getter=lambda c, r: chrom_stats[r]["min_length"])
+        )
+        summary_sheet.addColumn(
+            Column("max_length", getter=lambda c, r: chrom_stats[r]["max_length"])
+        )
+        summary_sheet.addColumn(
+            Column(
+                "avg_length",
+                getter=lambda c, r: chrom_stats[r]["total_length"]
+                / chrom_stats[r]["count"],
+                type=float,
+            )
+        )
+
+        vd.push(summary_sheet)
+
+    def filter_by_size(self, vd):
+        """Filter regions by size range."""
+        min_size = vd.input(
+            "Minimum size (bp): ", value=str(options.bed_min_region_size)
+        )
+        max_size = vd.input(
+            "Maximum size (bp): ", value=str(options.bed_max_region_size)
+        )
+        try:
+            min_size = int(min_size)
+            max_size = int(max_size)
+            for row in self.rows:
+                length = self.get_region_length(row)
+                row.selected = min_size <= length <= max_size
+        except ValueError:
+            vd.warning("Invalid size value")
+
+    def merge_overlapping(self, vd):
+        """Merge overlapping regions on same chromosome."""
+        merged = []
+        current = None
+
+        # Sort rows by chromosome and start position
+        sorted_rows = sorted(self.rows, key=lambda r: (r.chrom, r.start))
+
+        for row in sorted_rows:
+            if not current:
+                current = row
+                continue
+
+            if current.chrom == row.chrom and row.start <= current.end:
+                # Merge overlapping regions
+                current.end = max(current.end, row.end)
+            else:
+                merged.append(current)
+                current = row
+
+        if current:
+            merged.append(current)
+
+        self.rows = merged
+        vd.status(f"Merged into {len(merged)} regions")

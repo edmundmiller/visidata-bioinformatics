@@ -16,6 +16,11 @@ from visidata import (
 
 __version__ = "0.1"
 
+# Add options for GFF to BED conversion
+options.gff_to_bed_name_attr = "Name"  # GFF attribute to use for BED name field
+options.gff_to_bed_score_attr = "score"  # GFF attribute to use for BED score field
+options.gff_default_score = "0"  # Default score when missing
+
 
 class AttributesSheet(Sheet):
     """Sheet for displaying parsed GFF attributes"""
@@ -73,6 +78,7 @@ class GffSheet(Sheet):
         Column(name="attributes", getter=lambda c,r: r[8] if r[8] != '.' else None, type=str)
     ]
 
+    @asyncthread
     def iterload(self):
         with self.source.open_text() as fp:
             lines = list(fp)
@@ -96,8 +102,11 @@ class GffSheet(Sheet):
         """Convert GFF records to BED format."""
         try:
             from pybedlite import BedRecord
-        except ImportError:
-            vd.error("pybedlite module required for BED conversion")
+            from bed_pybedlite import BedPyblSheet
+        except ImportError as e:
+            vd.error(
+                f"Import error: {str(e)}. Make sure pybedlite is installed and bed_pybedlite.py is in the plugins directory"
+            )
             return
 
         bed_sheet = BedPyblSheet(f"{self.name}_bed", source=None)
@@ -207,7 +216,7 @@ def open_gff(vd, p):
     return GffSheet(p.name, source=p)
 
 @VisiData.api
-def save_gff(p, *sheets):
+def save_gff(vd, p, *sheets):
     """Save sheet to a GFF file"""
     if len(sheets) != 1:
         vd.fail("can only save one sheet to GFF")

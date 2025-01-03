@@ -18,22 +18,10 @@ from visidata import (
     Progress,
 )
 
-# Add options for BED file handling and visualization
-options.bed_skip_validation = False  # Fix: capitalize boolean values
-options.bed_default_score = "0"
-options.bed_default_name = "."
-options.bed_default_strand = "."
-options.bed_color_strands = True
-options.bed_max_region_size = 1000000
+# Import shared options
+from .bioinformatics_options import *
 
-# Add more BED-specific options
-options.bed_min_region_size = 0
-options.bed_chrom_order = "natural"
-options.bed_show_gc = False
-options.bed_to_gff_type = "region"
-options.bed_to_gff_source = "bed2gff"
-
-
+# Register BED format detection first
 @VisiData.api
 def open_bed(vd, p):
     """Try to open as BED, fall back to TSV if parsing fails"""
@@ -540,6 +528,6 @@ def save_bed(vd, p, *sheets):
             except Exception as e:
                 vd.warning(f"error saving row: {e}")
 
-
-# Register BED format detection
+# Make sure this is at the end of the file
 vd.filetype("bed", BedPyblSheet)
+

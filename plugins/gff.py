@@ -14,13 +14,16 @@ from visidata import (
     ENTER,
 )
 
+# Import shared options
+from .bioinformatics_options import *
+
 __version__ = "0.1"
 
-# Add options for GFF to BED conversion
-options.gff_to_bed_name_attr = "Name"  # GFF attribute to use for BED name field
-options.gff_to_bed_score_attr = "score"  # GFF attribute to use for BED score field
-options.gff_default_score = "0"  # Default score when missing
-
+# Register GFF format detection first
+@VisiData.api
+def open_gff(vd, p):
+    """Open a GFF file and return a GffSheet"""
+    return GffSheet(p.name, source=p)
 
 class AttributesSheet(Sheet):
     """Sheet for displaying parsed GFF attributes"""
@@ -209,11 +212,6 @@ def guess_gff(vd, p):
             break
     return None
 
-
-@VisiData.api
-def open_gff(vd, p):
-    """Open a GFF file and return a GffSheet"""
-    return GffSheet(p.name, source=p)
 
 @VisiData.api
 def save_gff(vd, p, *sheets):

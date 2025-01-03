@@ -46,33 +46,27 @@ def open_gff(vd, p):
 class AttributesSheet(Sheet):
     """Sheet for displaying parsed GFF attributes"""
 
-    rowtype = "attributes"  # rowdef: AttrDict of key-value pairs
+    rowtype = "attributes"  # rowdef: tuple of (key, value)
+
+    columns = [
+        Column("attribute", getter=lambda c, r: r[0]),
+        Column("value", getter=lambda c, r: r[1]),
+    ]
 
     def iterload(self):
         attrs_str = self.source
         if not attrs_str or attrs_str == ".":
             return
 
-        attrs = AttrDict()
         for attr in attrs_str.split(";"):
             if not attr.strip():
                 continue
             try:
                 key, value = attr.split("=", 1)
-                attrs[key.strip()] = value.strip()
+                yield (key.strip(), value.strip())
             except ValueError:
                 # Handle malformed attributes
-                attrs[attr.strip()] = ""
-
-        yield attrs
-
-    def addRow(self, row, index=None):
-        super().addRow(row, index=index)
-
-        # Add columns for any new keys
-        for k in row:
-            if not any(c.name == k for c in self.columns):
-                self.addColumn(ItemColumn(k))
+                yield (attr.strip(), "")
 
 
 class GffSheet(Sheet):

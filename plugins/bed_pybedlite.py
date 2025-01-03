@@ -4,6 +4,12 @@ import pybedlite as pybed
 from pathlib import Path
 from visidata import VisiData, Sheet, Column, vd, asyncthread, options
 
+# Add options for BED file handling
+options.bed_skip_validation = False  # Whether to skip field validation
+options.bed_default_score = "0"  # Default score when missing
+options.bed_default_name = "."  # Default name when missing
+options.bed_default_strand = "."  # Default strand when missing
+
 
 @VisiData.api
 def open_bed(vd, p):
@@ -26,32 +32,57 @@ def open_bed(vd, p):
 class BedPyblSheet(Sheet):
     """Sheet for displaying BED format data using pybedlite."""
 
-    rowtype = "regions"  # rowdef: BedRecord objects
+    rowtype = "genomic regions"  # More specific rowtype
+    required_fields = ["chrom", "start", "end"]
 
     def __init__(self, name, source=None, **kwargs):
         super().__init__(name, source=source, **kwargs)
         self.columns = []
         self.header_lines = []  # Store browser/track/comment lines
 
-        # Define columns based on BedRecord attributes
-        self.addColumn(Column("chrom", getter=lambda col, row: row.chrom))
-        self.addColumn(Column("start", type=int, getter=lambda col, row: row.start))
-        self.addColumn(Column("end", type=int, getter=lambda col, row: row.end))
-        self.addColumn(Column("name", getter=lambda col, row: row.name))
+        # Define columns based on BedRecord attributes with better descriptions
         self.addColumn(
-            Column("score", getter=lambda col, row: row.score)
-        )  # Keep as string to handle non-numeric values
-        self.addColumn(Column("strand", getter=lambda col, row: row.strand))
+            Column("chrom", getter=lambda col, row: row.chrom, help="Chromosome name")
+        )
+        self.addColumn(
+            Column(
+                "start",
+                type=int,
+                getter=lambda col, row: row.start,
+                help="Start position (0-based)",
+            )
+        )
+        self.addColumn(
+            Column(
+                "end",
+                type=int,
+                getter=lambda col, row: row.end,
+                help="End position (exclusive)",
+            )
+        )
+        self.addColumn(
+            Column("name", getter=lambda col, row: row.name, help="Feature name")
+        )
+        self.addColumn(
+            Column("score", getter=lambda col, row: row.score, help="Score from 0-1000")
+        )
+        self.addColumn(
+            Column(
+                "strand", getter=lambda col, row: row.strand, help="Strand (+, -, or .)"
+            )
+        )
         self.addColumn(
             Column(
                 "thickStart",
                 getter=lambda col, row: self._safe_convert(row.thick_start, int),
+                help="Start of thick drawing",
             )
         )
         self.addColumn(
             Column(
                 "thickEnd",
                 getter=lambda col, row: self._safe_convert(row.thick_end, int),
+                help="End of thick drawing",
             )
         )
         self.addColumn(
@@ -60,12 +91,14 @@ class BedPyblSheet(Sheet):
                 getter=lambda col, row: ",".join(map(str, row.item_rgb))
                 if row.item_rgb
                 else None,
+                help="RGB color (R,G,B)",
             )
         )
         self.addColumn(
             Column(
                 "blockCount",
                 getter=lambda col, row: self._safe_convert(row.block_count, int),
+                help="Number of blocks/exons",
             )
         )
         self.addColumn(
@@ -74,6 +107,7 @@ class BedPyblSheet(Sheet):
                 getter=lambda col, row: ",".join(map(str, row.block_sizes))
                 if row.block_sizes
                 else None,
+                help="Block sizes in bases",
             )
         )
         self.addColumn(
@@ -82,6 +116,7 @@ class BedPyblSheet(Sheet):
                 getter=lambda col, row: ",".join(map(str, row.block_starts))
                 if row.block_starts
                 else None,
+                help="Block starts relative to start",
             )
         )
 
@@ -95,6 +130,7 @@ class BedPyblSheet(Sheet):
             vd.debug(f"Could not convert {value} to {type_func.__name__}")
             return value  # Return original value instead of None
 
+    @asyncthread
     def reload(self):
         """Load BED records from file."""
         self.rows = []
@@ -172,3 +208,4 @@ class BedPyblSheet(Sheet):
             vd.debug(traceback.format_exc())
         finally:
             self.loading = False
+

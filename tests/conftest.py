@@ -1,13 +1,15 @@
 import pytest
 import importlib.util
-from visidata import VisiData, Path
+from visidata import VisiData, Path, vd, options
 from pathlib import Path as PathLib
 
 
 @pytest.fixture
 def vd():
     """Provide a fresh VisiData instance for each test"""
-    return VisiData()
+    vd_inst = VisiData()
+    vd_inst.options = options
+    return vd_inst
 
 
 @pytest.fixture

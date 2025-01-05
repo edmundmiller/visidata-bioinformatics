@@ -15,12 +15,10 @@ from visidata import (
     ENTER,
 )
 
-__version__ = "0.1"
 
-
-# Define and register options properly
 @VisiData.api
 def init_gff(vd):
+    """Initialize GFF plugin"""
     vd.option(
         "gff_to_bed_name_attr",
         "Name",
@@ -34,6 +32,9 @@ def init_gff(vd):
     vd.option(
         "gff_default_score", "0", "Default score to use when converting GFF to BED"
     )
+
+    # Register filetype
+    vd.filetype("gff", GffSheet)
 
 
 # Register GFF format detection first

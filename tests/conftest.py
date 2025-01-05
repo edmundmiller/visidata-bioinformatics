@@ -9,6 +9,10 @@ def vd():
     """Provide a fresh VisiData instance for each test"""
     vd_inst = VisiData()
     vd_inst.options = options
+
+    # Register default options for BED plugin
+    # (Add your options here as before)
+
     return vd_inst
 
 
@@ -36,5 +40,7 @@ def load_plugin(vd):
         init_func = getattr(module, f"init_{plugin_name}", None)
         if init_func:
             init_func(vd)
+        else:
+            vd.warning(f"No init function found for plugin: {plugin_name}")
 
     return _load_plugin

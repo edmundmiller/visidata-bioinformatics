@@ -1,5 +1,5 @@
 import pytest
-from pathlib import Path
+from visidata import Path
 
 
 def test_gff_loading(vd, load_plugin, test_data_dir):
@@ -8,7 +8,7 @@ def test_gff_loading(vd, load_plugin, test_data_dir):
 
     # Load test GFF file
     gff_path = test_data_dir / "gff" / "test.gff"
-    sheet = vd.openSource(Path(str(gff_path)))
+    sheet = vd.openSource(Path(gff_path))
 
     # Verify basic sheet properties
     assert sheet.__class__.__name__ == "GffSheet"
@@ -32,7 +32,7 @@ def test_gff_to_bed_conversion(vd, load_plugin, test_data_dir):
     load_plugin("bed_pybedlite")
 
     gff_path = test_data_dir / "gff" / "test.gff"
-    sheet = vd.openSource(Path(str(gff_path)))
+    sheet = vd.openSource(Path(gff_path))
 
     # Convert to BED
     sheet.convert_to_bed(vd)
@@ -48,7 +48,7 @@ def test_gff_attributes_parsing(vd, load_plugin, test_data_dir):
     load_plugin("gff")
 
     gff_path = test_data_dir / "gff" / "test.gff"
-    sheet = vd.openSource(Path(str(gff_path)))
+    sheet = vd.openSource(Path(gff_path))
 
     # Get a row with attributes
     row = next(r for r in sheet.rows if r[8] != ".")

@@ -1,5 +1,5 @@
 import pytest
-from pathlib import Path
+from visidata import Path
 
 
 def test_bed_loading(vd, load_plugin, test_data_dir):
@@ -7,7 +7,7 @@ def test_bed_loading(vd, load_plugin, test_data_dir):
     load_plugin("bed_pybedlite")
 
     bed_path = test_data_dir / "bed" / "ucsc_example1.bed"
-    sheet = vd.openSource(Path(str(bed_path)))
+    sheet = vd.openSource(Path(bed_path))
 
     assert sheet.__class__.__name__ == "BedPyblSheet"
     assert len(sheet.columns) >= 6
@@ -26,7 +26,7 @@ def test_bed_strand_colors(vd, load_plugin, test_data_dir):
     load_plugin("bed_pybedlite")
 
     bed_path = test_data_dir / "bed" / "ColorByStrandDemo.bed"
-    sheet = vd.openSource(Path(str(bed_path)))
+    sheet = vd.openSource(Path(bed_path))
 
     # Verify strand column exists
     strand_col = next(col for col in sheet.columns if col.name == "strand")
@@ -39,7 +39,7 @@ def test_bed_to_gff_conversion(vd, load_plugin, test_data_dir):
     load_plugin("gff")
 
     bed_path = test_data_dir / "bed" / "ucsc_example1.bed"
-    sheet = vd.openSource(Path(str(bed_path)))
+    sheet = vd.openSource(Path(bed_path))
 
     # Convert to GFF
     sheet.convert_to_gff(vd)

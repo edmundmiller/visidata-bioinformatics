@@ -200,84 +200,32 @@ class BedPyblSheet(Sheet):  # Fix: capitalize class name
 
     @asyncthread
     def reload(self):
-        """Load BED records from file."""
+        """Load BED records from file asynchronously."""
         self.rows = []
-        self.loading = True  # Fix: capitalize boolean values
+        self.loading = True
 
-        vd.status("Starting BED file load...")
-
-        # First pass to collect header lines
-        header_count = 0
-        with self.source.open_text() as fp:
-            for line in fp:
-                line = line.rstrip("\n")
-                if line.startswith(
-                    ("track", "browser")
-                ):  # remove # from header check since it's not standard
-                    self.header_lines.append(line)
-                    header_count += 1
-
-        vd.status(f"Found {header_count} header lines")
-
-        # Second pass to load records using pybedlite
         try:
-            bed_path = Path(self.source.resolve())  # Fix: capitalize Path
+            bed_path = Path(self.source.resolve())
             vd.status(f"Processing BED file: {bed_path}")
 
-            with bed_path.open() as bed_file:
-                vd.status("Creating pybedlite reader...")
-                # Skip header lines
-                for _ in range(len(self.header_lines)):
-                    next(bed_file)
-
+            with pybed.reader(path=bed_path) as bed_reader:
                 count = 0
-                for line in bed_file:
-                    line = line.strip()
-                    if not line or line.startswith(("track", "browser")):
-                        continue
-
-                    fields = line.split("\t")
-                    if len(fields) < 3:  # Must have at least chrom, start, end
-                        continue
-
-                    try:
-                        record = pybed.BedRecord(  # Fix: capitalize class name
-                            chrom=fields[0],
-                            start=int(fields[1]),
-                            end=int(fields[2]),
-                            name=fields[3] if len(fields) > 3 else ".",
-                            score=fields[4] if len(fields) > 4 else "0",
-                            strand="." if len(fields) <= 5 else fields[5],
-                            thick_start=None,  # Fix: capitalize None
-                            thick_end=None,
-                            item_rgb=None,
-                            block_count=None,
-                            block_sizes=None,
-                            block_starts=None,
-                        )
-
-                        if count == 0:
-                            vd.status(f"First record found: {record}")
-                        self.addRow(record)  # Fix: capitalize method name
-                        count += 1
-                        if count % 1000 == 0:
-                            vd.status(f"Loaded {count} records...")
-                    except (
-                        ValueError,
-                        IndexError,
-                    ) as e:  # Fix: capitalize exception names
-                        vd.debug(f"Skipping malformed record: {line} ({str(e)})")
-                        continue
+                for record in bed_reader:
+                    if count == 0:
+                        vd.status(f"First record found: {record}")
+                    self.addRow(record)
+                    count += 1
+                    if count % 10000 == 0:  # Status update less frequently
+                        vd.status(f"Loaded {count} records...")
 
                 vd.status(f"Completed loading {count} BED records")
 
         except Exception as e:
             vd.warning(f"Error reading BED file: {str(e)}")
             import traceback
-
             vd.debug(traceback.format_exc())
         finally:
-            self.loading = False  # Fix: capitalize boolean value
+            self.loading = False
 
     def colorize_strand(self, row):
         """return color based on strand."""
